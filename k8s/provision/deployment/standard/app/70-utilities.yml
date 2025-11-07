@@ -1,0 +1,19 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: pdb-worker
+  namespace: demo
+  labels:
+    environment: demo
+    app.kubernetes.io/name: bank-account-demo
+    app.kubernetes.io/component: webapp  
+spec:
+  minAvailable: 1
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - postgres
+          - api
+---

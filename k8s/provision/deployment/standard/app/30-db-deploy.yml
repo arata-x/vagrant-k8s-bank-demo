@@ -1,0 +1,235 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-cm
+  namespace: demo
+  labels:
+    environment: demo
+    app.kubernetes.io/name: bank-account-demo
+    app.kubernetes.io/component: database
+data:
+  POSTGRES_USER: postgres
+  POSTGRES_DB: appdb
+  POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+  APP_USER: appuser
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db-secret
+  namespace: demo
+  labels:
+    environment: demo
+    app.kubernetes.io/name: bank-account-demo
+    app.kubernetes.io/component: database
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: strong-password
+  APP_PASSWORD: strong-password
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: db-init
+  namespace: demo
+  labels:
+    environment: demo
+    app.kubernetes.io/name: bank-account-demo
+    app.kubernetes.io/component: database  
+data:
+  00-roles.sql: |
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'appuser') THEN
+        CREATE ROLE appuser LOGIN PASSWORD 'strong-password';
+      END IF;
+    END;
+    $$;
+  01-db.sql: |
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_database WHERE datname='appdb') THEN
+        CREATE DATABASE appdb OWNER appuser;
+      END IF;
+    END;
+    $$;
+  02-schema.sql: |
+    CREATE SCHEMA IF NOT EXISTS app AUTHORIZATION appuser;
+    GRANT USAGE ON SCHEMA app TO appuser;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA app
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO appuser;
+  03-comments.sql: |
+    COMMENT ON ROLE appuser IS 'Role used by the application to access the database';
+    COMMENT ON DATABASE appdb IS 'Application database';
+    COMMENT ON SCHEMA app IS 'Application schema';
+    COMMENT ON ROLE postgres IS 'Superuser role';
+  04-table.sql: |
+    CREATE TABLE IF NOT EXISTS app.accounts (
+      id UUID PRIMARY KEY DEFAULT uuidv7(),
+      owner_name TEXT NOT NULL,
+      currency CHAR(3) NOT NULL,
+      balance NUMERIC(18, 2) NOT NULL DEFAULT 0,
+      version BIGINT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_accounts_owner ON app.accounts(owner_name);
+    
+    CREATE TABLE IF NOT EXISTS app.ledger_entries (
+      id UUID PRIMARY KEY DEFAULT uuidv7(),
+      account_id UUID NOT NULL CONSTRAINT fk_ledger_account REFERENCES app.ACCOUNTS(ID),
+      direction text NOT NULL,
+      amount NUMERIC(18, 2) NOT NULL CHECK (AMOUNT > 0),
+      reason TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  05-data.sql: |
+    INSERT INTO app.accounts (id, owner_name, currency, balance)
+    VALUES
+      ('3f93c1c2-1c52-4df5-8c6a-9b0c6d7c5c11', 'Alice', 'USD', 10.00),
+      ('019a1f90-0efd-72e4-9c1f-bd49c80628e6', 'Bob', 'EUR', 10.00),
+      ('019a1f90-8239-78ca-b33a-f253bd7611e3', 'Peter','GBP', 10.00)
+    ON CONFLICT DO NOTHING;
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+  namespace: demo
+  labels:
+    app: postgres
+    environment: demo
+    app.kubernetes.io/name: bank-account-demo
+    app.kubernetes.io/component: database      
+spec:
+  clusterIP: None
+  ports:
+    - name: pg
+      port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: demo
+  labels:
+    app: postgres
+    environment: demo
+    app.kubernetes.io/name: bank-account-demo
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  ports:
+    - name: pg
+      port: 5432
+      targetPort: 5432
+  selector:
+    app: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: demo
+spec:
+  serviceName: postgres-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+        environment: demo
+        app.kubernetes.io/name: bank-account-demo
+        app.kubernetes.io/component: database
+    spec:
+      serviceAccountName: database-sa
+      nodeSelector:
+        tier: database
+      securityContext:
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: postgres
+          image: postgres:18
+          ports:
+            - containerPort: 5432
+              name: pg
+          envFrom:
+            - secretRef:
+                name: db-secret
+            - configMapRef:
+                name: db-cm
+          securityContext:
+            runAsUser: 999
+            runAsGroup: 999
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          volumeMounts:
+            - name: db-data
+              mountPath: /var/lib/postgresql/
+            - name: run-socket
+              mountPath: /var/run/postgresql
+            - name: db-init
+              mountPath: /docker-entrypoint-initdb.d
+          startupProbe:
+            exec:
+              command: ["sh","-c","pg_isready -h 127.0.0.1 -p 5432 -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+            initialDelaySeconds: 5  
+            failureThreshold: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+          readinessProbe:
+            exec:
+              command: ["sh","-c","pg_isready -h 127.0.0.1 -p 5432 -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+            successThreshold: 1
+          livenessProbe:
+            exec:
+              command: ["sh","-c","pg_isready -h 127.0.0.1 -p 5432 -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 5
+            successThreshold: 1
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    echo "PreStop: sleeping 10s to drain connections"; sleep 10
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+      volumes:
+        - name: run-socket
+          emptyDir: {}
+        - name: db-init
+          configMap:
+            name: db-init
+  volumeClaimTemplates:
+    - metadata:
+        name: db-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: vm-storage
+        resources:
+          requests:
+            storage: 5Gi
+---

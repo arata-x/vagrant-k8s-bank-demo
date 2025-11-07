@@ -1,0 +1,14 @@
+services:
+  app:
+    image: docker.io/aratax/bank-account-demo:1.0
+    container_name: bank-account-demo
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: sit
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres.demo.svc.cluster.local:5432/appdb
+      SPRING_DATASOURCE_USERNAME: appuser
+      SPRING_DATASOURCE_PASSWORD: strong-password
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_JPA_SHOW_SQL: "true"
+

@@ -1,0 +1,14 @@
+     ___      .______          ___   .___________.    ___      ___   ___ 
+    /   \     |   _  \        /   \  |           |   /   \     \  \ /  / 
+   /  ^  \    |  |_)  |      /  ^  \ `---|  |----`  /  ^  \     \  V  /  
+  /  /_\  \   |      /      /  /_\  \    |  |      /  /_\  \     >   <   
+ /  _____  \  |  |\  \----./  _____  \   |  |     /  _____  \   /  .  \  
+/__/     \__\ | _| `._____/__/     \__\  |__|    /__/     \__\ /__/ \__\ 
+                                                                         
+                              A r a t a X
+
+
+Application: ${spring.application.name}
+Profile: ${spring.profiles.active}
+Spring Boot: ${spring-boot.version}
+JVM: ${java.version}

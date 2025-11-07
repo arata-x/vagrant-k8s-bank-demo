@@ -1,0 +1,17 @@
+spring:
+  application:
+    name: springboot
+  datasource:
+    url: jdbc:postgresql://192.168.56.12:30000/appdb
+    username: appuser
+    password: strong-password
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,env
+  endpoint:
+    health:
+      probes:
+        enabled: true                 

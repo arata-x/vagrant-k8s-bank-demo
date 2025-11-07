@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/appdb
+    username: appuser
+    password: strong-password
+  devtools:
+    restart.enabled: true
+    
+logging:
+  level:
+    root: debug
