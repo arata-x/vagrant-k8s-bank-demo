@@ -1,0 +1,54 @@
+**/target/
+.mvn
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Node ###
+node_modules/
+package-lock.json
+
+
+
+# Vagrant
+.vagrant/
+
+# Unused scripts
+scripts/_*.sh
+scripts/backup_*.sh
+
+# OS noise
+.DS_Store
+Thumbs.db
+app/build.log
+
+
+*.log
+Vagrantfile
